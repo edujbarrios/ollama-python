@@ -9,6 +9,9 @@ from ollama._client import AsyncClient, Client
 
 pytestmark = pytest.mark.anyio
 
+# Minimal 1x1 red pixel PNG encoded as base64, used in VLM image tests
+_TINY_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI6QAAAABJRU5ErkJggg=='
+
 
 @pytest.fixture
 def anyio_backend():
@@ -535,3 +538,123 @@ async def test_async_agent_reset(httpserver: HTTPServer):
   agent.reset()
   assert len(agent.messages) == 1
   assert agent.messages[0].role == 'system'
+
+
+# --- No-tools (VLM / conversational) Agent Tests ---
+
+
+def test_agent_no_tools(httpserver: HTTPServer):
+  """Test agent created without tools performs a direct chat."""
+  httpserver.expect_request('/api/chat', method='POST').respond_with_json({
+    'model': 'dummy',
+    'message': {
+      'role': 'assistant',
+      'content': 'I can see a red apple on a wooden table.',
+    },
+  })
+
+  client = Client(httpserver.url_for('/'))
+  agent = Agent(model='dummy', client=client)
+  response = agent.chat('Describe this image.')
+
+  assert response.message.content == 'I can see a red apple on a wooden table.'
+  assert len(agent.messages) == 2  # user + assistant
+
+
+def test_agent_no_tools_with_images(httpserver: HTTPServer):
+  """Test no-tools agent accepts images (VLM mode)."""
+  body_seen = []
+
+  def handler(request: Request) -> Response:
+    body_seen.append(request.get_json())
+    return Response(
+      json.dumps({
+        'model': 'dummy',
+        'message': {
+          'role': 'assistant',
+          'content': 'Correct, the image shows a red apple.',
+        },
+      }),
+      content_type='application/json',
+    )
+
+  httpserver.expect_request('/api/chat', method='POST').respond_with_handler(handler)
+
+  client = Client(httpserver.url_for('/'))
+  agent = Agent(model='dummy', system='You are an image reviewer.', client=client)
+  response = agent.chat('Does this match: a red apple?', images=[_TINY_PNG_B64])
+
+  assert response.message.content == 'Correct, the image shows a red apple.'
+  # Images must have been forwarded in the user message
+  user_msg = body_seen[0]['messages'][1]
+  assert user_msg['images'] is not None
+  # No tools should be registered — client sends an empty tools list
+  assert body_seen[0].get('tools', []) == []
+
+
+def test_agent_no_tools_conversation_history(httpserver: HTTPServer):
+  """Test no-tools agent preserves conversation history across turns."""
+  httpserver.expect_request('/api/chat', method='POST').respond_with_json({
+    'model': 'dummy',
+    'message': {
+      'role': 'assistant',
+      'content': 'Reply.',
+    },
+  })
+
+  client = Client(httpserver.url_for('/'))
+  agent = Agent(model='dummy', client=client)
+
+  agent.chat('Turn one.')
+  agent.chat('Turn two.')
+
+  assert len(agent.messages) == 4  # user1, assistant1, user2, assistant2
+  assert agent.messages[0] == {'role': 'user', 'content': 'Turn one.'}
+  assert agent.messages[2] == {'role': 'user', 'content': 'Turn two.'}
+
+
+async def test_async_agent_no_tools(httpserver: HTTPServer):
+  """Test async agent created without tools performs a direct chat."""
+  httpserver.expect_request('/api/chat', method='POST').respond_with_json({
+    'model': 'dummy',
+    'message': {
+      'role': 'assistant',
+      'content': 'Vision response.',
+    },
+  })
+
+  client = AsyncClient(httpserver.url_for('/'))
+  agent = AsyncAgent(model='dummy', client=client)
+  response = await agent.chat('Describe this image.')
+
+  assert response.message.content == 'Vision response.'
+  assert len(agent.messages) == 2
+
+
+async def test_async_agent_no_tools_with_images(httpserver: HTTPServer):
+  """Test async no-tools agent accepts images (VLM mode)."""
+  body_seen = []
+
+  def handler(request: Request) -> Response:
+    body_seen.append(request.get_json())
+    return Response(
+      json.dumps({
+        'model': 'dummy',
+        'message': {
+          'role': 'assistant',
+          'content': 'Correct.',
+        },
+      }),
+      content_type='application/json',
+    )
+
+  httpserver.expect_request('/api/chat', method='POST').respond_with_handler(handler)
+
+  client = AsyncClient(httpserver.url_for('/'))
+  agent = AsyncAgent(model='dummy', system='You are an image reviewer.', client=client)
+  response = await agent.chat('Does this match: a cat?', images=[_TINY_PNG_B64])
+
+  assert response.message.content == 'Correct.'
+  user_msg = body_seen[0]['messages'][1]
+  assert user_msg['images'] is not None
+  assert body_seen[0].get('tools', []) == []
