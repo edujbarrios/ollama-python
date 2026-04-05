@@ -1,6 +1,8 @@
-# Ollama Python Library
+# Ollama Python Library (Extended with Agent Support)
 
-The Ollama Python library provides the easiest way to integrate Python 3.8+ projects with [Ollama](https://github.com/ollama/ollama).
+This is an adapted version of the [official Ollama Python library](https://github.com/ollama/ollama-python) that adds **Agent** and **AsyncAgent** classes for tool-calling and vision-language model (VLM) workflows.
+
+The library provides the easiest way to integrate Python 3.8+ projects with [Ollama](https://github.com/ollama/ollama), now with built-in agent capabilities.
 
 ## Prerequisites
 
@@ -13,6 +15,20 @@ The Ollama Python library provides the easiest way to integrate Python 3.8+ proj
 ```sh
 pip install ollama
 ```
+
+## Development Install
+
+To install this adapted library from source for testing and development:
+
+```sh
+git clone https://github.com/edujbarrios/ollama-python.git
+cd ollama-python
+pip install -e .
+```
+
+This installs the package in editable mode so that any local changes are immediately available without reinstalling.
+
+> **Note:** This will replace the official `ollama` package. To revert, run `pip install ollama` to restore the upstream version.
 
 ## Usage
 
@@ -173,6 +189,116 @@ async def chat():
 
 asyncio.run(chat())
 ```
+
+## Agent
+
+The `Agent` class provides a high-level wrapper around the Ollama chat API with automatic tool-calling support. The agent manages conversation history and handles the tool-calling loop automatically.
+
+### Agent with Tools
+
+Register Python functions as tools and the agent will automatically call them when the model requests it:
+
+```python
+from ollama import Agent
+
+def add_two_numbers(a: int, b: int) -> int:
+  """
+  Add two numbers together.
+
+  Args:
+    a (int): The first number
+    b (int): The second number
+
+  Returns:
+    int: The sum of the two numbers
+  """
+  return a + b
+
+def subtract_two_numbers(a: int, b: int) -> int:
+  """
+  Subtract two numbers.
+
+  Args:
+    a (int): The first number
+    b (int): The second number
+
+  Returns:
+    int: The difference of the two numbers
+  """
+  return a - b
+
+agent = Agent(
+  model='llama3.1',
+  tools=[add_two_numbers, subtract_two_numbers],
+  system='You are a helpful math assistant.',
+)
+
+response = agent.chat('What is three plus one?')
+print(response.message.content)
+
+# The agent maintains conversation history across turns
+response = agent.chat('Now subtract 2 from that result.')
+print(response.message.content)
+```
+
+### Vision Agent (VLM)
+
+When no tools are provided, the agent works as a vision-language model wrapper, supporting image inputs:
+
+```python
+from ollama import Agent
+
+agent = Agent(
+  model='llava',
+  system='You are an expert image reviewer. Evaluate whether the description matches the image.',
+)
+
+response = agent.chat(
+  'Does this description match the image? Description: a red apple on a wooden table.',
+  images=['path/to/image.jpg'],
+)
+print(response.message.content)
+
+# Follow-up questions retain full conversation context
+followup = agent.chat('What specific details in the image led to your verdict?')
+print(followup.message.content)
+```
+
+### Async Agent
+
+The `AsyncAgent` class provides the same capabilities as `Agent` but for asynchronous workflows:
+
+```python
+import asyncio
+from ollama import AsyncAgent
+
+def add_two_numbers(a: int, b: int) -> int:
+  """
+  Add two numbers together.
+
+  Args:
+    a (int): The first number
+    b (int): The second number
+
+  Returns:
+    int: The sum of the two numbers
+  """
+  return a + b
+
+async def main():
+  agent = AsyncAgent(
+    model='llama3.1',
+    tools=[add_two_numbers],
+    system='You are a helpful math assistant.',
+  )
+
+  response = await agent.chat('What is three plus one?')
+  print(response.message.content)
+
+asyncio.run(main())
+```
+
+See [examples/agent.py](examples/agent.py), [examples/async-agent.py](examples/async-agent.py), and [examples/vision-agent.py](examples/vision-agent.py) for complete working examples.
 
 ## API
 
