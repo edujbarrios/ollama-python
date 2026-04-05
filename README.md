@@ -298,7 +298,57 @@ async def main():
 asyncio.run(main())
 ```
 
-See [examples/agent.py](examples/agent.py), [examples/async-agent.py](examples/async-agent.py), and [examples/vision-agent.py](examples/vision-agent.py) for complete working examples.
+### Multi-Agent Vision Conversations
+
+Multiple `Agent` instances can collaborate on the same image, each with a different role. The output of one agent is passed as input to the next, creating a pipeline:
+
+```python
+from ollama import Agent
+
+image_path = 'path/to/image.jpg'
+
+# Agent 1 — describe the image
+describer = Agent(
+  model='gemma3',
+  system='You are an expert image describer. Provide a rich, detailed description.',
+)
+
+description = describer.chat(
+  'Describe this image in detail.',
+  images=[image_path],
+).message.content
+
+# Agent 2 — critique the description
+critic = Agent(
+  model='gemma3',
+  system='You are a meticulous image-description critic. Point out inaccuracies or missing details.',
+)
+
+critique = critic.chat(
+  f'Here is a description of the attached image:\n\n"{description}"\n\n'
+  'What is accurate? What is missing or wrong?',
+  images=[image_path],
+).message.content
+
+# Agent 3 — produce a final summary
+summarizer = Agent(
+  model='gemma3',
+  system='You are a skilled summarizer. Write a concise, accurate summary incorporating the feedback.',
+)
+
+summary = summarizer.chat(
+  f'Original description:\n"{description}"\n\n'
+  f'Critic feedback:\n"{critique}"\n\n'
+  'Write a final, concise summary of the image.',
+  images=[image_path],
+).message.content
+
+print(summary)
+```
+
+See [examples/multi-agent-vision.py](examples/multi-agent-vision.py) and [examples/async-multi-agent-vision.py](examples/async-multi-agent-vision.py) for complete working examples.
+
+See also [examples/agent.py](examples/agent.py), [examples/async-agent.py](examples/async-agent.py), and [examples/vision-agent.py](examples/vision-agent.py) for single-agent examples.
 
 ## API
 
