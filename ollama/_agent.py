@@ -139,7 +139,10 @@ class Agent:
       for tool_call in response.message.tool_calls:
         func = self._tool_map.get(tool_call.function.name)
         if func:
-          result = func(**tool_call.function.arguments)
+          try:
+            result = func(**tool_call.function.arguments)
+          except Exception as e:
+            result = f'Error calling {tool_call.function.name}: {e}'
           self._messages.append({
             'role': 'tool',
             'content': str(result),
@@ -300,10 +303,13 @@ class AsyncAgent:
       for tool_call in response.message.tool_calls:
         func = self._tool_map.get(tool_call.function.name)
         if func:
-          if inspect.iscoroutinefunction(func):
-            result = await func(**tool_call.function.arguments)
-          else:
-            result = func(**tool_call.function.arguments)
+          try:
+            if inspect.iscoroutinefunction(func):
+              result = await func(**tool_call.function.arguments)
+            else:
+              result = func(**tool_call.function.arguments)
+          except Exception as e:
+            result = f'Error calling {tool_call.function.name}: {e}'
           self._messages.append({
             'role': 'tool',
             'content': str(result),

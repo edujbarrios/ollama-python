@@ -234,6 +234,61 @@ def test_agent_unknown_tool(httpserver: HTTPServer):
   assert 'not found' in tool_msg['content']
 
 
+def test_agent_tool_exception(httpserver: HTTPServer):
+  """Test agent handles tool function exceptions gracefully."""
+
+  def failing_func(x: int) -> int:
+    """
+    A function that always fails.
+
+    Args:
+      x (int): A number
+
+    Returns:
+      int: Never returns
+    """
+    raise ValueError('something went wrong')
+
+  responses = [
+    {
+      'model': 'dummy',
+      'message': {
+        'role': 'assistant',
+        'content': '',
+        'tool_calls': [
+          {
+            'function': {
+              'name': 'failing_func',
+              'arguments': {'x': 1},
+            }
+          }
+        ],
+      },
+    },
+    {
+      'model': 'dummy',
+      'message': {
+        'role': 'assistant',
+        'content': 'The function encountered an error.',
+      },
+    },
+  ]
+
+  httpserver.expect_request('/api/chat', method='POST').respond_with_handler(
+    _make_chat_handler(responses)
+  )
+
+  client = Client(httpserver.url_for('/'))
+  agent = Agent(model='dummy', tools=[failing_func], client=client)
+  response = agent.chat('Call the failing function')
+
+  assert response.message.content == 'The function encountered an error.'
+  tool_msg = agent.messages[2]
+  assert tool_msg['role'] == 'tool'
+  assert 'Error calling failing_func' in tool_msg['content']
+  assert 'something went wrong' in tool_msg['content']
+
+
 def test_agent_max_iterations(httpserver: HTTPServer):
   """Test agent respects max_iterations limit."""
   # Always return a tool call to force max iterations
